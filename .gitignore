@@ -1,0 +1,7 @@
+# Keep environment variables out of version control
+.env
+node_modules
+public/
+package-lock.json
+test_path.js
+views/
