@@ -91,8 +91,13 @@ router.post('/signup', async function (req, res, next) {
     // send cookies
     res.cookie('jwt', refreshToken,
       { httpOnly: true, secure: true, maxAge: ageRefreshToken * 1000 });
-    // response
-    return res.status(201).json({ accessToken });
+
+    // delete password from response
+    delete user['password'];
+
+    // return response
+    return res.status(201).json({ accessToken, user });
+
   } catch (error) {
     // throw new Error(error);
     res.status(400).json({ success: false });
