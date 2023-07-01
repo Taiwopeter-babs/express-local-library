@@ -16,16 +16,33 @@ export const ageRefreshToken = 10 * 60; // 10 minutes
 export function verifyToken(req, res, next) {
 
     try {
-        const refreshToken = req.cookies.jwt;
-        const decodedToken = jwt.verify(refreshToken, process.env.REFRESH_JWT);
+        const accessToken = req.body.accessToken;
+        const decodedToken = jwt.verify(accessToken, process.env.JWT);
 
     } catch (error) {
+        console.log(error);
         if (error.name === 'TokenExpiredError') {
             return res.status(404).json({ status: error.message, success: false });
         }
         return res.status(404).json({ status: "Not found", success: false });
     }
     next();
+}
+
+/**
+ * verifies the refresh token
+ * @param {*} refreshToken 
+ */
+export function verifyRefreshToken(refreshToken) {
+    return new Promise((resolve, reject) => {
+        jwt.verify(refreshToken, process.env.REFRESH_JWT, (error, decoded) => {
+            if (error) {
+                reject(error);
+            }
+            const userId = decoded.aud;
+            resolve(userId);
+        });
+    });
 }
 
 /**
@@ -36,11 +53,11 @@ export const createAccessToken = (userId) => {
 
     return new Promise((resolve, reject) => {
         const options = {
-            expiresIn: ageRefreshToken,
+            expiresIn: ageAccessToken,
         }
         jwt.sign({ userId }, process.env.JWT, options, (error, token) => {
             if (error) {
-                reject();
+                reject(error);
             }
             resolve(token);
         });
