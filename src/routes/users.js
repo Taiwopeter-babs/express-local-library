@@ -3,11 +3,15 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 
 import UserEntity from '../entities/userModel.js';
+
 import { datasource } from '../data_source.js';
+import redisClient from '../init_redis.js';
+
 import { hashCompare, hashPassword } from '../tokens_helper.js';
 import { createAccessToken, createRefreshToken } from '../tokens_helper.js';
 import { ageAccessToken, ageRefreshToken } from '../tokens_helper.js';
 import { verifyRefreshToken, verifyToken } from '../tokens_helper.js';
+
 
 // Declare router for route
 const router = express.Router();
@@ -141,10 +145,11 @@ router.post('/login', async function (req, res, next) {
     // return response
     return res.status(200).json({ accessToken, user });
   } catch (error) {
-    console.log(error);
     res.status(400).json({ success: false });
   }
 });
+
+
 
 /* Refresh access tokens with the refresh token */
 router.post('/refresh-token', async (req, res, next) => {
@@ -156,7 +161,7 @@ router.post('/refresh-token', async (req, res, next) => {
     // verify refresh token
     const userId = await verifyRefreshToken(refreshToken);
 
-    // create new tokens
+    // create new tokens and cache them with user ids 
     const [accessToken, newRefreshToken] =
       await Promise.all(
         [createAccessToken(userId),
@@ -174,9 +179,31 @@ router.post('/refresh-token', async (req, res, next) => {
 })
 
 /* User logout route */
-router.get('/logout', verifyToken, async function (req, res, next) {
-  res.cookie('jwt', '', { httpOnly: true, maxAge: 1000 });
-  return res.status(200).json({ success: true });
+router.delete('/:userId/logout', async function (req, res, next) {
+  try {
+
+    const userId = req.params.userId;
+    const refreshToken = req.cookies.jwt;
+    const usersRepo = datasource.getRepository(UserEntity);
+    const user = await usersRepo.findOneBy({
+      id: userId
+    })
+
+    // check for user's validity
+    if (!user) {
+      return res.status(404).json({ success: false })
+    }
+    // check for refreshToken in cache
+    const replyId = await verifyRefreshToken(refreshToken);
+    // delete refresh token from cache
+    const replyFromRedis = await redisClient.del(replyId);
+
+    return res.status(200).json({ success: true });
+
+  } catch (error) {
+    return res.status(500).json({ success: false });
+  }
 });
+
 
 export default router;
