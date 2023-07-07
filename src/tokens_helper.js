@@ -1,6 +1,10 @@
 #!/usr/bin/node
 import jwt from 'jsonwebtoken';
 import * as bcrypt from "bcrypt";
+import createError from 'http-errors';
+
+import redisClient from './init_redis.js';
+import { cacheToken, checkCacheForToken } from './cache_data.js';
 
 // saltsRounds to generate token
 const saltRounds = 10;
@@ -20,7 +24,6 @@ export function verifyToken(req, res, next) {
         const decodedToken = jwt.verify(accessToken, process.env.JWT);
 
     } catch (error) {
-        console.log(error);
         if (error.name === 'TokenExpiredError') {
             return res.status(404).json({ status: error.message, success: false });
         }
@@ -35,12 +38,20 @@ export function verifyToken(req, res, next) {
  */
 export function verifyRefreshToken(refreshToken) {
     return new Promise((resolve, reject) => {
-        jwt.verify(refreshToken, process.env.REFRESH_JWT, (error, decoded) => {
+        jwt.verify(refreshToken, process.env.REFRESH_JWT, async (error, decoded) => {
             if (error) {
-                reject(error);
+                reject(createError.InternalServerError());
             }
             const userId = decoded.aud;
-            resolve(userId);
+
+            // check cache for token
+            const resultFromCache = await checkCacheForToken(userId);
+            if (resultFromCache && resultFromCache === refreshToken) {
+                return resolve(userId);
+            } else {
+                return reject(createError.BadRequest());
+            }
+
         });
     });
 }
@@ -75,11 +86,26 @@ export const createRefreshToken = (userId) => {
             expiresIn: ageRefreshToken,
             audience: userId
         }
-        jwt.sign({}, process.env.REFRESH_JWT, options, (error, token) => {
+        jwt.sign({}, process.env.REFRESH_JWT, options, async (error, token) => {
             if (error) {
-                reject();
+                reject(createError.InternalServerError());
             }
-            resolve(token);
+            // check cache for token
+            const resultFromCache = await checkCacheForToken(userId);
+
+            if (resultFromCache) {
+                resolve(resultFromCache);
+            } else {
+                // cache the user id and refreshToken in redis
+                const reply = await cacheToken(userId, token, ageRefreshToken);
+                if (!reply) {
+                    console.log('token caching fail', reply);
+                    reject(createError.InternalServerError());
+                } else {
+                    console.log('token cached success', reply);
+                    resolve(token);
+                }
+            }
         });
     });
 }
