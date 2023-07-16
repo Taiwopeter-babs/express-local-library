@@ -1,16 +1,18 @@
-#!/usr/bin/node
-import express from 'express';
-import { v4 as uuidv4 } from 'uuid';
+const { checkCacheForToken } = require('../cache_data');
 
-import UserEntity from '../entities/userModel.js';
+const express = require('express');
+const { v4: uuidv4 } = require('uuid');
 
-import { datasource } from '../data_source.js';
-import redisClient from '../init_redis.js';
+const UserEntity = require('../entities/userModel');
 
-import { hashCompare, hashPassword } from '../tokens_helper.js';
-import { createAccessToken, createRefreshToken } from '../tokens_helper.js';
-import { ageAccessToken, ageRefreshToken } from '../tokens_helper.js';
-import { verifyRefreshToken, verifyToken } from '../tokens_helper.js';
+const datasource = require('../data_source');
+const redisClient = require('../init_redis');
+
+const { hashCompare, hashPassword } = require('../tokens_helper');
+const { createAccessToken, createRefreshToken } = require('../tokens_helper');
+const { ageAccessToken, ageRefreshToken } = require('../tokens_helper');
+const { verifyRefreshToken, verifyToken } = require('../tokens_helper');
+const { sendConfirmationMail, verifyConfirmedUser } = require('../email_confirmation');
 
 
 // Declare router for route
@@ -18,7 +20,7 @@ const router = express.Router();
 
 
 /* GET users listing. */
-router.get('/', verifyToken, async function (req, res, next) {
+router.get('/', verifyToken, verifyConfirmedUser, async function (req, res, next) {
 
   try {
     const usersRepo = datasource.getRepository(UserEntity);
@@ -26,7 +28,8 @@ router.get('/', verifyToken, async function (req, res, next) {
       select: {
         first_name: true,
         id: true,
-        birthday: true
+        birthday: true,
+        valid_email: true
       }
     });
 
@@ -47,12 +50,12 @@ router.get('/:user_id', verifyToken, async function (req, res, next) {
       id: user_id
     });
     if (!user) {
-      return res.status(404).json({ "status": "Not found", success: false })
-    } else {
-      return res.status(200).json(user);
+      return res.status(404).json({ message: "User Not found" })
     }
+    return res.status(200).json(user);
+
   } catch (error) {
-    return res.status(408).json({ "status": "Request Timeout", success: false })
+    return res.status(408).json({ error: "Request Timeout" })
   }
 })
 
@@ -76,7 +79,7 @@ router.post('/signup', async function (req, res, next) {
 
     // check for existing user
     if (user) {
-      return res.status(400).json({ "status": "account already exists", success: false })
+      return res.status(400).json({ "message": "account already exists" })
     }
 
     // hash paswword, then assign new Id
@@ -97,14 +100,24 @@ router.post('/signup', async function (req, res, next) {
       { httpOnly: true, secure: true, maxAge: ageRefreshToken * 1000 });
 
     // delete password from response
-    delete user['password'];
+    delete newUser['password'];
 
-    // return response
-    return res.status(201).json({ accessToken, user });
+    // send verification email and return response
+    const mailSent = sendConfirmationMail(newUser.email);
+
+    if (!mailSent) {
+      return res.status(401).json({ message: 'Unsuccessful registration' });
+    }
+    return res.status(201).json({
+      message: 'registration successful',
+      accessToken,
+      newUser
+    });
 
   } catch (error) {
     // throw new Error(error);
-    res.status(400).json({ success: false });
+    console.log(error);
+    res.status(401).json({ error: 'Unexpected error. Please try again later' });
   }
 });
 
@@ -156,7 +169,7 @@ router.post('/refresh-token', async (req, res, next) => {
   try {
     const refreshToken = req.cookies.jwt;
     if (!refreshToken) {
-      return res.status(400).json({});
+      return res.status(400).json({ message: 'No refresh token' });
     }
     // verify refresh token
     const userId = await verifyRefreshToken(refreshToken);
@@ -174,9 +187,43 @@ router.post('/refresh-token', async (req, res, next) => {
     res.status(200).json({ accessToken })
 
   } catch (error) {
-    res.status(400).json({});
+    res.status(400).json({ error: 'Generating new access token failed.' });
   }
 })
+
+/* User Email confimation route */
+router.post('/activation/:userEmail/:secretCode', async function (req, res, next) {
+  try {
+
+    const { userEmail, secretCode } = req.params;
+    const usersRepo = datasource.getRepository(UserEntity);
+    const user = await usersRepo.findOneBy({
+      email: userEmail
+    })
+
+    // check for user's validity
+    if (!user) {
+      return res.status(404).json({ message: 'Not found' })
+    }
+
+    // check confimation secret key
+    const secretKey = await checkCacheForToken(userEmail);
+    if (!(secretKey === secretCode)) {
+      return res.status(400).json({ message: 'Email confirmaton unsuccessful' });
+    }
+    user.valid_email = true;
+    await usersRepo.save(user);
+    const replyFromRedis = await redisClient.del(userEmail);
+    if (replyFromRedis) {
+      return res.status(200).json({ message: 'Email Confirmed' });
+    }
+
+
+
+  } catch (error) {
+    return res.status(401).json({ error: 'Unexpected email error. Please try again later' });
+  }
+});
 
 /* User logout route */
 router.delete('/:userId/logout', async function (req, res, next) {
@@ -206,4 +253,4 @@ router.delete('/:userId/logout', async function (req, res, next) {
 });
 
 
-export default router;
+module.exports = router;

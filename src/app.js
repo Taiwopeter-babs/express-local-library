@@ -1,33 +1,31 @@
 #!/usr/bin/node
-import express from 'express';
-import createError from 'http-errors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import cookieParser from 'cookie-parser';
-import logger from 'morgan';
+const express = require('express');
+const createError = require('http-errors');
+const path = require('path');
+const { fileURLToPath } = require('url');
+const cookieParser = require('cookie-parser');
+const logger = require('morgan');
 
-import usersRouter from './routes/users.js';
-import indexRouter from './routes/index.js';
+const usersRouter = require('./routes/users');
+const indexRouter = require('./routes/index');
 
-import { datasource } from './data_source.js';
+const datasource = require('./data_source');
+require('./init_redis');
 
+// express main app route initializer
+const app = express();
 
-export const app = express();
-
-// intialize database connection
+// intialize mysql database connection
 datasource.initialize()
   .then(() => {
-    console.log('Connected to the database');
+    console.log('Connected to mysql database');
   })
   .catch((error) => console.log('Error when trying to set up database connection: ', error));
 
 // Get file name
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'pug');
 
 app.use(logger('dev'));
 // Verify that the incoming request is in JSON format
@@ -63,4 +61,4 @@ app.use(function (err, req, res, next) {
   res.render('error');
 });
 
-
+module.exports = app;

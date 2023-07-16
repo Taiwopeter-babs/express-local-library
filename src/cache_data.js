@@ -1,5 +1,5 @@
 #!/usr/bin/node
-import redisClient from './init_redis.js';
+const redisClient = require('./init_redis');
 
 /**
  * caches refresh token for user authorization
@@ -8,7 +8,7 @@ import redisClient from './init_redis.js';
  * @param {*} tokenAge - valid time for which token can be used
  * @returns - true on successful caching, otherwise false
  */
-export async function cacheToken(userId, userToken, tokenAge) {
+async function cacheToken(userId, userToken, tokenAge) {
     // check for complete parameters
     if (!userId || !userToken || !tokenAge) {
         return false;
@@ -32,14 +32,19 @@ export async function cacheToken(userId, userToken, tokenAge) {
  * check if token is available in redis memory
  * @param {*} userId 
  */
-export async function checkCacheForToken(userId) {
-    if (!userId) {
+async function checkCacheForToken(userData) {
+    if (!userData) {
         return null;
     }
     try {
-        const reply = await redisClient.get(userId);
+        const reply = await redisClient.get(userData);
         return reply;
     } catch (error) {
         return null;
     }
+}
+
+module.exports = {
+    checkCacheForToken,
+    cacheToken
 }

@@ -1,42 +1,51 @@
 #!/usr/bin/node
-import jwt from 'jsonwebtoken';
-import * as bcrypt from "bcrypt";
-import createError from 'http-errors';
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const createError = require('http-errors');
 
-import redisClient from './init_redis.js';
-import { cacheToken, checkCacheForToken } from './cache_data.js';
+const redisClient = require('./init_redis.js');
+const { cacheToken, checkCacheForToken } = require('./cache_data');
+require('dotenv').config({
+    path: '../.env'
+});
 
 // saltsRounds to generate token
 const saltRounds = 10;
 
 // age of web tokens converted from days to seconds
-export const ageAccessToken = 60; // 1 minute
-export const ageRefreshToken = 10 * 60; // 10 minutes
+const ageAccessToken = 5 * 60; // 5 minutes
+const ageRefreshToken = 60 * 60; // 60 minutes
 
 
 /**
- * verifies the json web token
+ * 
+ * @param {*} req 
+ * @param {*} res 
+ * @param {*} next - goes to the next middleware in the stack
+ * @returns 
  */
-export function verifyToken(req, res, next) {
+function verifyToken(req, res, next) {
 
     try {
         const accessToken = req.body.accessToken;
         const decodedToken = jwt.verify(accessToken, process.env.JWT);
-
+        if (decodedToken) {
+            next();
+        }
     } catch (error) {
         if (error.name === 'TokenExpiredError') {
             return res.status(404).json({ status: error.message, success: false });
         }
         return res.status(404).json({ status: "Not found", success: false });
     }
-    next();
+
 }
 
 /**
  * verifies the refresh token
  * @param {*} refreshToken 
  */
-export function verifyRefreshToken(refreshToken) {
+function verifyRefreshToken(refreshToken) {
     return new Promise((resolve, reject) => {
         jwt.verify(refreshToken, process.env.REFRESH_JWT, async (error, decoded) => {
             if (error) {
@@ -60,7 +69,7 @@ export function verifyRefreshToken(refreshToken) {
  * creates a json web token
  * @param: userId - user id
  */
-export const createAccessToken = (userId) => {
+const createAccessToken = (userId) => {
 
     return new Promise((resolve, reject) => {
         const options = {
@@ -79,7 +88,7 @@ export const createAccessToken = (userId) => {
  * creates a fresh json web token
  * @param: userId - user id
  */
-export const createRefreshToken = (userId) => {
+const createRefreshToken = (userId) => {
     return new Promise((resolve, reject) => {
         const options = {
             issuer: "Taiwo",
@@ -113,7 +122,7 @@ export const createRefreshToken = (userId) => {
 /**
  * hashes a user password
  */
-export async function hashPassword(password) {
+async function hashPassword(password) {
 
     try {
         const salt = await bcrypt.genSalt(saltRounds);
@@ -127,7 +136,7 @@ export async function hashPassword(password) {
 /**
  * returns a boolean for hash comparison
  */
-export async function hashCompare(password, hash) {
+async function hashCompare(password, hash) {
 
     try {
         const match = await bcrypt.compare(password, hash);
@@ -137,3 +146,14 @@ export async function hashCompare(password, hash) {
     }
 }
 
+
+module.exports = {
+    ageAccessToken,
+    ageRefreshToken,
+    hashCompare,
+    hashPassword,
+    createAccessToken,
+    createRefreshToken,
+    verifyRefreshToken,
+    verifyToken
+}

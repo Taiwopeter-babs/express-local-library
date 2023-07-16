@@ -1,13 +1,11 @@
-#!/usr/bin/node
-import { DataSource } from "typeorm";
-import 'dotenv/config';
-
-import UserEntity from "./entities/userModel.js";
+const { DataSource } = require("typeorm");
+require('dotenv').config();
+const UserEntity = require("./entities/userModel");
 
 /**
  * sets up database connection
  **/
-export const datasource = new DataSource({
+const datasource = new DataSource({
     type: "mysql",
     host: process.env.HOST,
     port: process.env.DB_PORT,
@@ -18,3 +16,5 @@ export const datasource = new DataSource({
     // creates the database schema on every application launch. should be used in dev
     // synchronize: true
 })
+
+module.exports = datasource;

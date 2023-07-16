@@ -1,6 +1,6 @@
 #!/usr/bin/node
-import { v4 as uuidv4 } from 'uuid';
-import { EntitySchema } from 'typeorm';
+const { v4: uuidv4 } = require('uuid');
+const { EntitySchema } = require('typeorm');
 
 
 const UserEntity = new EntitySchema({
@@ -29,7 +29,12 @@ const UserEntity = new EntitySchema({
         email: {
             type: "varchar",
             length: 100,
-            nullable: false
+            nullable: false,
+            unique: true
+        },
+        valid_email: {
+            type: "boolean",
+            default: false
         },
         password: {
             type: "varchar",
@@ -39,4 +44,4 @@ const UserEntity = new EntitySchema({
     }
 })
 
-export default UserEntity;
+module.exports = UserEntity;
