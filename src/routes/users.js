@@ -32,10 +32,11 @@ router.get('/', verifyToken, verifyConfirmedUser, async function (req, res, next
         valid_email: true
       }
     });
+    const accessToken = res.locals.accessToken;
 
-    return res.status(200).json(users);
+    return res.status(200).json({ users, accessToken });
   } catch (error) {
-    return res.status(404).json({ "status": "Not found" })
+    return res.status(404).json({ error: "Not found" })
   }
 });
 
@@ -93,8 +94,8 @@ router.post('/signup', async function (req, res, next) {
 
     const [accessToken, refreshToken] =
       await Promise.all(
-        [createAccessToken(userData.id),
-        createRefreshToken(userData.id)]);
+        [createAccessToken(newUser.email),
+        createRefreshToken(newUser.email)]);
     // send cookies
     res.cookie('jwt', refreshToken,
       { httpOnly: true, secure: true, maxAge: ageRefreshToken * 1000 });
@@ -145,8 +146,8 @@ router.post('/login', async function (req, res, next) {
     // On success, create web tokens and send in cookies
     const [accessToken, refreshToken] =
       await Promise.all(
-        [createAccessToken(user.id),
-        createRefreshToken(user.id)]);
+        [createAccessToken(user.email),
+        createRefreshToken(user.email)]);
 
     // send refresh token in cookie
     res.cookie('jwt', refreshToken,
@@ -163,9 +164,10 @@ router.post('/login', async function (req, res, next) {
 });
 
 
+// THIS ROUTE WILL BE REMOVED
 
 /* Refresh access tokens with the refresh token */
-router.post('/refresh-token', async (req, res, next) => {
+router.post('/new-access-token', async (req, res, next) => {
   try {
     const refreshToken = req.cookies.jwt;
     if (!refreshToken) {
@@ -226,7 +228,7 @@ router.post('/activation/:userEmail/:secretCode', async function (req, res, next
 });
 
 /* User logout route */
-router.delete('/:userId/logout', async function (req, res, next) {
+router.post('/:userId/logout', async function (req, res, next) {
   try {
 
     const userId = req.params.userId;
@@ -245,10 +247,10 @@ router.delete('/:userId/logout', async function (req, res, next) {
     // delete refresh token from cache
     const replyFromRedis = await redisClient.del(replyId);
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({ message: 'logout successful' });
 
   } catch (error) {
-    return res.status(500).json({ success: false });
+    return res.status(400).json({ error: 'logout unsuccessful' });
   }
 });
 

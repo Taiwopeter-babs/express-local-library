@@ -146,21 +146,22 @@ async function verifyConfirmedUser(req, res, next) {
 
   try {
     const userEmail = req.body.email;
-    user = await findUser(userEmail)
+    user = await findUser(userEmail);
 
     // check user's email validity
     if (!user) {
       return res.status(404).json({ message: "Not found" })
     }
-    if (!user.valid_email) {
+    console.log(user.valid_email);
+    if (!(user.valid_email)) {
       return res.status(401).json({ message: "Unauthorized access" });
     }
-    // go to the next middleware or route
-    next();
 
   } catch (error) {
     return res.status(400).json({ error: "Bad Request" });
   }
+  // go to the next middleware or route
+  next();
 }
 
 

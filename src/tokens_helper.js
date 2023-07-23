@@ -13,9 +13,41 @@ require('dotenv').config({
 const saltRounds = 10;
 
 // age of web tokens converted from days to seconds
-const ageAccessToken = 5 * 60; // 5 minutes
+const ageAccessToken = 2 * 60; // 5 minutes
 const ageRefreshToken = 60 * 60; // 60 minutes
 
+/**
+ * Validates an access token. If the access token is expired,
+ * the function creates a new one to be sent in the response
+ * @param {*} accessToken - access token to be decoded
+ * @param {*} userEmail - user's email address
+ * @returns 
+ */
+const decodeAccessToken = (accessToken, userEmail) => {
+    return new Promise((resolve, reject) => {
+        jwt.verify(accessToken, process.env.JWT, async (error, token) => {
+            if (error) {
+                // For expired access tokens
+                if (error.name === 'TokenExpiredError') {
+                    // check cache for user refresh token
+                    console.log(error.message);
+                    const refreshToken = await checkCacheForToken(userEmail);
+                    if (!refreshToken) {
+                        console.log('No refresh token');
+                        reject(createError.BadRequest());
+                    }
+                    const newToken = await createAccessToken(userEmail);
+                    return resolve(newToken);
+
+                } else {
+                    reject(error);
+                }
+
+            }
+            resolve(accessToken);
+        })
+    })
+}
 
 /**
  * 
@@ -26,19 +58,15 @@ const ageRefreshToken = 60 * 60; // 60 minutes
  */
 function verifyToken(req, res, next) {
 
-    try {
-        const accessToken = req.body.accessToken;
-        const decodedToken = jwt.verify(accessToken, process.env.JWT);
-        if (decodedToken) {
-            next();
-        }
-    } catch (error) {
-        if (error.name === 'TokenExpiredError') {
-            return res.status(404).json({ status: error.message, success: false });
-        }
-        return res.status(404).json({ status: "Not found", success: false });
-    }
-
+    const { email, accessToken } = req.body;
+    decodeAccessToken(accessToken, email)
+        .then((token) => {
+            res.locals.accessToken = token;
+            return next();
+        })
+        .catch((error) => {
+            return res.status(404).json({ error: "token verification unsuccessful" });
+        })
 }
 
 /**
@@ -69,13 +97,14 @@ function verifyRefreshToken(refreshToken) {
  * creates a json web token
  * @param: userId - user id
  */
-const createAccessToken = (userId) => {
+function createAccessToken(userEmail) {
 
     return new Promise((resolve, reject) => {
         const options = {
             expiresIn: ageAccessToken,
+            audience: userEmail
         }
-        jwt.sign({ userId }, process.env.JWT, options, (error, token) => {
+        jwt.sign({ userEmail }, process.env.JWT, options, (error, token) => {
             if (error) {
                 reject(error);
             }
@@ -88,30 +117,30 @@ const createAccessToken = (userId) => {
  * creates a fresh json web token
  * @param: userId - user id
  */
-const createRefreshToken = (userId) => {
+const createRefreshToken = (userEmail) => {
     return new Promise((resolve, reject) => {
         const options = {
             issuer: "Taiwo",
             expiresIn: ageRefreshToken,
-            audience: userId
+            audience: userEmail
         }
         jwt.sign({}, process.env.REFRESH_JWT, options, async (error, token) => {
             if (error) {
                 reject(createError.InternalServerError());
             }
-            // check cache for token
-            const resultFromCache = await checkCacheForToken(userId);
+            // check cache for token   
+            const resultFromCache = await checkCacheForToken(userEmail);
 
             if (resultFromCache) {
                 resolve(resultFromCache);
             } else {
                 // cache the user id and refreshToken in redis
-                const reply = await cacheToken(userId, token, ageRefreshToken);
+                const reply = await cacheToken(userEmail, token, ageRefreshToken);
                 if (!reply) {
                     console.log('token caching fail', reply);
                     reject(createError.InternalServerError());
                 } else {
-                    console.log('token cached success', reply);
+                    console.log('token cached successfully', reply);
                     resolve(token);
                 }
             }
