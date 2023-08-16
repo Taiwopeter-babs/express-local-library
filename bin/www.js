@@ -3,10 +3,12 @@
 /**
  * Module dependencies.
  */
-import debug from 'debug';
-import http from 'http';
-import 'dotenv/config';
-import { app } from '../src/app.js';
+const debug = require('debug');
+const http = require('http');
+require('dotenv').config({
+  path: '../.env'
+})
+const app = require('../src/app');
 
 
 const logger = debug('express-local-library:server');
